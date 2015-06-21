@@ -1,0 +1,153 @@
+---
+title: "Practical Machine Learning - Prediction Assignment Writeup"
+author: "Mehran"
+date: "Sunday, June 21, 2015"
+output: html_document
+---
+
+#### Assignment: Using devices such as Jawbone Up,Nike FuelBand, and Fitbit, it is now possible to collect a large amount of data about personal activity relatively inexpensively. These data allow users to quantify how much of a particular activity they do, but they won't inform users if the activity is done in a correct way . The goal of this project is to develop a machine learning model using a sample data collected by 6 male participants who did light weight lifting exercise and simulated correct and incorrect way of doing it in a safe and controlled way. The required output is a machine-learning algorithm that can check the quality of barbell bicep curls by using data from belt, forearm, arm, and dumbbell monitors and classify it into on one of the following five classes: Class A (correct way), Class B (throwing the elbows to the front), Class C (lifting the dumbbell only halfway), Class D (lowering the dumbbell only halfway) and Class E (throwing the hips to the front).
+
+
+#### Data source:  group of research and development of groupware technologies (http://groupware.les.inf.puc-rio.br/har). Training data from https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv and test data from https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv.
+
+#### Load required library
+```{r}
+library(caret)
+```
+
+#### Load datasets
+```{r}
+trainUrl <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testUrl <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+ptrain <- read.csv(trainUrl, na.strings=c("NA",""), header=TRUE)
+ptest <- read.csv(testUrl, na.strings=c("NA",""), header=TRUE)
+```
+
+#### In order to estimate the out-of-sample error, we split the full training data (ptrain) into a smaller training set (ptrain1) and a validation set (ptrain2):
+```{r}
+set.seed(10)
+inTrain <- createDataPartition(y=ptrain$classe, p=0.7, list=F)
+ptrain1 <- ptrain[inTrain, ]
+ptrain2 <- ptrain[-inTrain, ]
+```
+
+#### We also reduce the number of features by removing variables with nearly zero variance, variables that are almost always NA, and variables that don't make intuitive sense for prediction. Variables were remived based on analyzing ptrain1 which was then applied to ptrain2:
+
+##### remove variables with nearly zero variance
+```{r}
+nzv <- nearZeroVar(ptrain1)
+ptrain1 <- ptrain1[, -nzv]
+ptrain2 <- ptrain2[, -nzv]
+```
+##### remove variables with many missing values
+```{r}
+mostlyNA <- sapply(ptrain1, function(x) mean(is.na(x))) > 0.95
+ptrain1 <- ptrain1[, mostlyNA==F]
+ptrain2 <- ptrain2[, mostlyNA==F]
+```
+
+##### remove variables irrelevant for prediction
+```{r}
+ptrain1 <- ptrain1[, -(1:5)]
+ptrain2 <- ptrain2[, -(1:5)]
+```
+
+### Model Building
+#### A Random Forest model is selected and the model is fitted on ptrain1. The "train" function is instrcuted to use 3-fold cross-validation to select optimal tuning parameters for the model.
+
+##### instruct train to use 3-fold CV to select optimal tuning parameters
+```{r}
+fitControl <- trainControl(method="cv", number=3, verboseIter=F)
+```
+
+##### fit model on ptrain1
+```{r}
+fit <- train(classe ~ ., data=ptrain1, method="rf", trControl=fitControl)
+```
+
+##### print final model to see tuning parameters it chose
+```{r}
+fit$finalModel
+```
+
+### Model Evaluation and Selection
+#### The fitted modelis now used to predict the label ("classe") in ptrain2, and show the confusion matrix to compare the predicted versus the actual labels:
+
+##### use model to predict classe in validation set (ptrain2)
+```{r}
+preds <- predict(fit, newdata=ptrain2)
+```
+
+##### show confusion matrix to get estimate of out-of-sample error
+```{r}
+confusionMatrix(ptrain2$classe, preds)
+```
+
+##### The predicted accuracy for the out-of-sample error is 0.2% which is very good result, therefore, Random Forests will be used to predict on the test set.
+
+### Re-training the Selected Model
+#### Before predicting on the test set, we train the model on the full training set (ptrain) which help to produce the most accurate predictions. Therefore, all above steps for ptrain will be repeated below for ptest:
+
+##### remove variables with nearly zero variance
+```{r}
+nzv <- nearZeroVar(ptrain)
+ptrain <- ptrain[, -nzv]
+ptest <- ptest[, -nzv]
+```
+
+##### remove variables with man missing value
+```{r}
+mostlyNA <- sapply(ptrain, function(x) mean(is.na(x))) > 0.95
+ptrain <- ptrain[, mostlyNA==F]
+ptest <- ptest[, mostlyNA==F]
+```
+
+##### remove variables irrelevant for prediction
+```{r}
+ptrain <- ptrain[, -(1:5)]
+ptest <- ptest[, -(1:5)]
+```
+
+##### re-fit model using full training set (ptrain)
+```{r}
+fitControl <- trainControl(method="cv", number=3, verboseIter=F)
+fit <- train(classe ~ ., data=ptrain, method="rf", trControl=fitControl)
+```
+
+### Test Set Predictions
+#### The model fit on ptrain is used to predict the label for the observations in ptest, and write those predictions to individual files:
+
+##### predict on test set
+```{r}
+preds <- predict(fit, newdata=ptest)
+```
+
+##### convert predictions to character vector
+```{r}
+preds <- as.character(preds)
+```
+
+##### create function to write predictions to files
+```{r}
+pml_write_files <- function(x) {
+    n <- length(x)
+    for(i in 1:n) {
+        filename <- paste0("problem_id_", i, ".txt")
+        write.table(x[i], file=filename, quote=F, row.names=F, col.names=F)
+    }
+}
+```
+
+##### create prediction files for submition
+```{r}
+pml_write_files(preds)
+```
+
+
+
+
+
+
+
+
+
